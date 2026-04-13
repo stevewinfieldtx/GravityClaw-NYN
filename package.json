@@ -6,17 +6,24 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
+    "talk": "tsx src/talk.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@microsoft/teams-ai": "^1.7.4",
+    "@types/ws": "^8.18.1",
     "better-sqlite3": "^11.7.0",
-    "openai": "^4.77.0",
+    "botbuilder": "^4.23.3",
     "dotenv": "^16.4.7",
-    "grammy": "^1.35.0"
+    "grammy": "^1.35.0",
+    "openai": "^4.77.0",
+    "restify": "^11.1.0",
+    "ws": "^8.20.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.0",
+    "@types/restify": "^8.5.12",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   }

@@ -1,6 +1,7 @@
 import { loadConfig } from "./config.js";
 import { createBot } from "./bot.js";
 import { getToolNames } from "./tools/index.js";
+import { startTeamsServer } from "./server.js";
 
 async function main() {
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -22,12 +23,20 @@ async function main() {
 
   // Create and start bot (long-polling, no web server)
   const bot = createBot(config);
+  const teamsServer = startTeamsServer(config);
 
   // Graceful shutdown
   const shutdown = () => {
     console.log("\n🛑 Shutting down...");
     bot.stop();
-    process.exit(0);
+    if (teamsServer) {
+        teamsServer.close(() => {
+            console.log("Teams server closed.");
+            process.exit(0);
+        });
+    } else {
+        process.exit(0);
+    }
   };
 
   process.on("SIGINT", shutdown);

@@ -61,7 +61,8 @@ export interface AgentResponse {
  */
 export async function runAgentLoop(
   config: Config,
-  conversationHistory: ChatCompletionMessageParam[]
+  conversationHistory: ChatCompletionMessageParam[],
+  streamCallback?: (chunk: string) => void
 ): Promise<AgentResponse> {
   const client = new OpenAI({
     baseURL: "https://openrouter.ai/api/v1",
@@ -82,61 +83,123 @@ export async function runAgentLoop(
   while (iterations < config.maxToolIterations) {
     iterations++;
 
-    const response = await client.chat.completions.create({
-      model: config.openRouterModelId,
-      max_tokens: 4096,
-      tools,
-      messages,
-    });
+    if (streamCallback) {
+      const stream = await client.chat.completions.create({
+        model: config.openRouterModelId,
+        max_tokens: 4096,
+        tools,
+        messages,
+        stream: true,
+      });
 
-    const choice = response.choices[0];
-    if (!choice) {
-      return { text: "(No response from model)", toolsUsed, iterations };
-    }
+      let contentStr = "";
+      const toolCallsMap = new Map<number, any>();
 
-    const message = choice.message;
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta;
+        if (!delta) continue;
 
-    // Check if the model wants to use tools
-    const toolCalls = message.tool_calls;
+        if (delta.content) {
+          contentStr += delta.content;
+          streamCallback(delta.content);
+        }
 
-    if (!toolCalls || toolCalls.length === 0) {
-      // No tool calls — return the text response
-      const text = message.content || "(No response)";
-      return { text, toolsUsed, iterations };
-    }
-
-    // Model wants to use tools — add its response to history
-    messages.push(message);
-
-    // Execute each tool and feed results back
-    for (const toolCall of toolCalls) {
-      const functionName = toolCall.function.name;
-      let args: Record<string, unknown> = {};
-
-      try {
-        args = JSON.parse(toolCall.function.arguments || "{}");
-      } catch {
-        args = {};
+        if (delta.tool_calls) {
+          for (const tc of delta.tool_calls) {
+            const index = tc.index;
+            if (!toolCallsMap.has(index)) {
+              toolCallsMap.set(index, {
+                id: tc.id,
+                type: "function",
+                function: { name: tc.function?.name || "", arguments: "" },
+              });
+            }
+            if (tc.function?.arguments) {
+              toolCallsMap.get(index).function.arguments += tc.function.arguments;
+            }
+          }
+        }
       }
 
-      console.log(`🔧 Tool call: ${functionName}(${JSON.stringify(args)})`);
-      toolsUsed.push(functionName);
+      const tool_calls = Array.from(toolCallsMap.values());
+      const message: any = { role: "assistant", content: contentStr || null };
+      if (tool_calls.length > 0) message.tool_calls = tool_calls;
 
-      const result = await executeTool(functionName, args);
-      console.log(`   ✅ Result: ${result.success ? "success" : "error"}`);
+      if (!tool_calls || tool_calls.length === 0) {
+        return { text: message.content || "(No response)", toolsUsed, iterations };
+      }
 
-      // Add tool result as a tool message
-      messages.push({
-        role: "tool",
-        tool_call_id: toolCall.id,
-        content: JSON.stringify(result),
+      messages.push(message);
+
+      for (const toolCall of tool_calls) {
+        const functionName = toolCall.function.name;
+        let args: Record<string, unknown> = {};
+
+        try {
+          args = JSON.parse(toolCall.function.arguments || "{}");
+        } catch {
+          args = {};
+        }
+
+        console.log(`🔧 Tool call: ${functionName}(${JSON.stringify(args)})`);
+        toolsUsed.push(functionName);
+
+        const result = await executeTool(functionName, args);
+        console.log(`   ✅ Result: ${result.success ? "success" : "error"}`);
+
+        messages.push({
+          role: "tool",
+          tool_call_id: toolCall.id,
+          content: JSON.stringify(result),
+        });
+      }
+    } else {
+      const response = await client.chat.completions.create({
+        model: config.openRouterModelId,
+        max_tokens: 4096,
+        tools,
+        messages,
       });
-    }
 
-    // Loop back so the model can see the tool results
+      const choice = response.choices[0];
+      if (!choice) {
+        return { text: "(No response from model)", toolsUsed, iterations };
+      }
+
+      const message = choice.message;
+      const toolCalls = message.tool_calls;
+
+      if (!toolCalls || toolCalls.length === 0) {
+        return { text: message.content || "(No response)", toolsUsed, iterations };
+      }
+
+      messages.push(message);
+
+      for (const toolCall of toolCalls) {
+        const functionName = toolCall.function.name;
+        let args: Record<string, unknown> = {};
+
+        try {
+          args = JSON.parse(toolCall.function.arguments || "{}");
+        } catch {
+          args = {};
+        }
+
+        console.log(`🔧 Tool call: ${functionName}(${JSON.stringify(args)})`);
+        toolsUsed.push(functionName);
+
+        const result = await executeTool(functionName, args);
+        console.log(`   ✅ Result: ${result.success ? "success" : "error"}`);
+
+        messages.push({
+          role: "tool",
+          tool_call_id: toolCall.id,
+          content: JSON.stringify(result),
+        });
+      }
+    }
   }
 
-  // Hit iteration limit
   console.warn(`⚠️  Hit max tool iterations (${config.maxToolIterations})`);
   return {
     text: "I hit my tool iteration limit. Here's what I gathered so far — could you rephrase or simplify your request?",

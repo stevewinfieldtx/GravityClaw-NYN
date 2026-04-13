@@ -23,6 +23,9 @@ interface RegisteredTool {
 
 import * as timeTool from "./time.js";
 import * as tdeTool from "./queryTde.js";
+import * as listDocTool from "./listDocuments.js";
+import * as readDocTool from "./readDocument.js";
+import * as writeDocTool from "./writeDocument.js";
 
 // --- Registry ---
 const tools: Map<string, RegisteredTool> = new Map();
@@ -38,6 +41,9 @@ function register(def: ChatCompletionTool, handler: ToolHandler) {
 // Register all tools
 register(timeTool.definition, timeTool.handler);
 register(tdeTool.definition, tdeTool.handler);
+register(listDocTool.definition, listDocTool.handler);
+register(readDocTool.definition, readDocTool.handler);
+register(writeDocTool.definition, writeDocTool.handler);
 
 /** Get all tool definitions for the OpenAI-compatible API call */
 export function getToolDefinitions(): ChatCompletionTool[] {

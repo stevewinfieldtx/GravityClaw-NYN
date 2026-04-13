@@ -10,6 +10,9 @@ export interface Config {
   elevenLabsApiKey: string | null;
   elevenLabsVoiceId: string;
   maxToolIterations: number;
+  teamsAppId: string | null;
+  teamsAppPassword: string | null;
+  teamsPort: number;
 }
 
 function requireEnv(key: string): string {
@@ -54,5 +57,8 @@ export function loadConfig(): Config {
     elevenLabsApiKey: process.env.ELEVENLABS_API_KEY || null,
     elevenLabsVoiceId: process.env.ELEVENLABS_VOICE_ID ?? "21m00Tcm4TlvDq8ikWAM",
     maxToolIterations: Math.max(1, parseInt(process.env.MAX_TOOL_ITERATIONS ?? "10", 10)),
+    teamsAppId: process.env.TEAMS_APP_ID || null,
+    teamsAppPassword: process.env.TEAMS_APP_PASSWORD || null,
+    teamsPort: parseInt(process.env.TEAMS_PORT ?? "3978", 10),
   };
 }

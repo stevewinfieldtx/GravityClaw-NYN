@@ -4,30 +4,9 @@ import type { Config } from "./config.js";
 import { createAuthMiddleware } from "./security.js";
 import { runAgentLoop } from "./llm.js";
 import { transcribeAudio, textToSpeech, downloadTelegramFile } from "./voice.js";
+import { getHistory, saveHistory, clearHistory } from "./memory.js";
 
-/**
- * Per-user conversation history.
- * Key: Telegram user ID
- * Value: Array of OpenAI chat message params
- *
- * In-memory for Level 1. Will be persisted in Level 2.
- */
-const conversations = new Map<number, ChatCompletionMessageParam[]>();
-
-const MAX_HISTORY_LENGTH = 40; // Keep last 40 messages (20 turns) to avoid token overflow
-
-function getHistory(userId: number): ChatCompletionMessageParam[] {
-  if (!conversations.has(userId)) {
-    conversations.set(userId, []);
-  }
-  return conversations.get(userId)!;
-}
-
-function trimHistory(history: ChatCompletionMessageParam[]): void {
-  while (history.length > MAX_HISTORY_LENGTH) {
-    history.shift();
-  }
-}
+// Local history implementation removed in favor of memory.js
 
 /**
  * Send the agent's response — as voice if the user spoke, as text otherwise.
@@ -89,14 +68,14 @@ export function createBot(config: Config): Bot {
 
   // /clear command — reset conversation history
   bot.command("clear", async (ctx) => {
-    const userId = ctx.from!.id;
-    conversations.delete(userId);
+    const userId = `tg_${ctx.from!.id}`;
+    clearHistory(userId);
     await ctx.reply("🧹 Conversation cleared. Fresh start.");
   });
 
   // /status command — check bot health
   bot.command("status", async (ctx) => {
-    const userId = ctx.from!.id;
+    const userId = `tg_${ctx.from!.id}`;
     const history = getHistory(userId);
     await ctx.reply(
       `✅ *NYN Status*\n\n` +
@@ -112,7 +91,7 @@ export function createBot(config: Config): Bot {
 
   // Handle voice messages
   bot.on("message:voice", async (ctx) => {
-    const userId = ctx.from!.id;
+    const userId = `tg_${ctx.from!.id}`;
 
     await ctx.replyWithChatAction("typing");
 
@@ -141,14 +120,14 @@ export function createBot(config: Config): Bot {
       // 3. Feed transcription into the agent loop
       const history = getHistory(userId);
       history.push({ role: "user", content: transcription });
-      trimHistory(history);
+      saveHistory(userId, history);
 
       await ctx.replyWithChatAction("typing");
 
       const response = await runAgentLoop(config, history);
 
       history.push({ role: "assistant", content: response.text });
-      trimHistory(history);
+      saveHistory(userId, history);
 
       if (response.toolsUsed.length > 0) {
         console.log(
@@ -167,7 +146,7 @@ export function createBot(config: Config): Bot {
 
   // Handle all text messages — the main agent loop
   bot.on("message:text", async (ctx) => {
-    const userId = ctx.from!.id;
+    const userId = `tg_${ctx.from!.id}`;
     const userMessage = ctx.message.text;
 
     // Skip if it's a command we already handled
@@ -177,7 +156,7 @@ export function createBot(config: Config): Bot {
 
     // Add user message to history
     history.push({ role: "user", content: userMessage });
-    trimHistory(history);
+    saveHistory(userId, history);
 
     // Show typing indicator
     await ctx.replyWithChatAction("typing");
@@ -188,7 +167,7 @@ export function createBot(config: Config): Bot {
 
       // Add assistant response to history
       history.push({ role: "assistant", content: response.text });
-      trimHistory(history);
+      saveHistory(userId, history);
 
       // Log tool usage
       if (response.toolsUsed.length > 0) {
@@ -203,8 +182,8 @@ export function createBot(config: Config): Bot {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`❌ Agent loop error:`, message);
 
-      // Remove the failed user message from history
       history.pop();
+      saveHistory(userId, history);
 
       await ctx.reply(`⚠️ Error: ${message.slice(0, 200)}`);
     }

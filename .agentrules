@@ -1,0 +1,14 @@
+# Project Deployment Guidelines
+
+This project runs on **Railway** but is deployed via **GitHub**. 
+
+## CRITICAL RULE FOR AI ASSISTANTS:
+Whenever you finish making code or configuration changes to ANY file in this workspace, you MUST remind the user to push the changes to GitHub, or offer to push the changes for them. 
+
+Local changes do not go live until they are pushed to the GitHub repository, which then triggers the automatic deployment to Railway.
+
+```bash
+git add .
+git commit -m "Your commit message"
+git push
+```
