@@ -3,22 +3,49 @@ import type {
   ChatCompletionMessageParam,
   ChatCompletionMessageToolCall,
 } from "openai/resources/chat/completions.js";
+import { readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Config } from "./config.js";
 import { getToolDefinitions, executeTool } from "./tools/index.js";
+import { loadKnowledge } from "./knowledge.js";
 
-const SYSTEM_PROMPT = `You are Sentinel, a personal AI assistant running as a Telegram bot on the user's local machine.
+// Load soul.md from project root
+function loadSoul(): string {
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const soulPath = resolve(__dirname, "..", "soul.md");
 
-Key traits:
-- You are direct, helpful, and security-conscious.
-- You have access to tools. Use them when they help answer the user's question.
-- If you don't know something and don't have a tool for it, say so honestly.
-- Keep responses concise — this is a chat interface, not an essay.
-- Use markdown formatting sparingly (Telegram supports basic markdown).
+  try {
+    const soul = readFileSync(soulPath, "utf-8").trim();
+    console.log(`✅ Soul loaded (soul.md)`);
+    return soul;
+  } catch {
+    console.warn(`⚠️  soul.md not found at ${soulPath}, using fallback prompt`);
+    return "You are NYN, a helpful private AI assistant. Be direct and concise.";
+  }
+}
 
-Current capabilities:
-- get_current_time: Check the current date and time in any timezone.
+// Build full system prompt: soul + knowledge base
+function buildSystemPrompt(): string {
+  const soul = loadSoul();
+  const knowledge = loadKnowledge();
 
-You are running locally on the user's machine. Everything stays private.`;
+  if (!knowledge) {
+    return soul;
+  }
+
+  return `${soul}
+
+---
+
+## Your Knowledge Base
+
+The following is background information you should use when answering questions. Reference this naturally — don't mention that you're reading from a knowledge base.
+
+${knowledge}`;
+}
+
+const SYSTEM_PROMPT = buildSystemPrompt();
 
 export interface AgentResponse {
   text: string;

@@ -9,6 +9,7 @@ RUN npm ci --omit=dev
 # Copy source and config
 COPY src/ ./src/
 COPY tsconfig.json ./
+COPY soul.md ./
 
 # Install tsx for running TypeScript directly
 RUN npm install -g tsx
